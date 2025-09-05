@@ -1,22 +1,15 @@
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Runtime.Serialization.Formatters.Binary;
-using System.Threading;
 using System.Threading.Tasks;
-using Concentus.Oggfile;
-using Concentus.Structs;
 using NAudio.Utils;
 using NAudio.Wave;
 using PimDeWitte.UnityMainThreadDispatcher;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UI;
 using Debug = UnityEngine.Debug;
-using Random = UnityEngine.Random;
 
 public class M4aTester : MonoBehaviour
 {
@@ -36,21 +29,25 @@ public class M4aTester : MonoBehaviour
         taskStartTime = Stopwatch.StartNew();
         task = Task.Run(() =>
         {
-            byte[] mp3Bytes = File.ReadAllBytes("C:/Melody Chase.mp3");
-            byte[] rencoded = Reencode(mp3Bytes);
-            File.WriteAllBytes("C:/Melody Chase.mp3e", rencoded);
-
-            Debug.Log("Done");
+            // byte[] mp3Bytes = File.ReadAllBytes("C:/Melody Chase.mp3");
+            // byte[] rencoded = Reencode(mp3Bytes);
+            // File.WriteAllBytes("C:/Melody Chase.mp3e", rencoded);
+            //
+            // Debug.Log("Done");
 
             byte[] mp3eBytes = File.ReadAllBytes("C:/Melody Chase.mp3e");
             PlayMP3E(mp3eBytes);
         });
+
+        slider.onValueChanged.AddListener(OnSliderChange);
     }
 
     private void Update()
     {
         if (waveBuffer == null) return;
-        // slider.SetValueWithoutNotify((float) (waveBuffer.BufferDuration - waveBuffer.BufferedDuration).TotalSeconds);
+
+        // Debug.Log(waveBuffer.Position + ", " + TimeSpan.FromSeconds(waveBuffer.Position / (float)waveBuffer.OutputWaveFormat.AverageBytesPerSecond));
+        slider.SetValueWithoutNotify(waveBuffer.Position / (float)waveBuffer.OutputWaveFormat.AverageBytesPerSecond);
         // Debug.Log(slider.value);
 
         // if (Input.GetKeyDown(KeyCode.K))
@@ -58,12 +55,17 @@ public class M4aTester : MonoBehaviour
         //     waveBuffer.
         // }
 
-        if (task != null && taskStartTime.Elapsed.TotalSeconds > 5)
+        if (task != null && task.IsCompleted == false && taskStartTime.Elapsed.TotalSeconds > 5)
         {
             task.Dispose();
             Debug.LogError("Task timeout");
             task = null;
         }
+    }
+
+    public void OnSliderChange(float value)
+    {
+        waveBuffer.Position = (int) (value * waveBuffer.OutputWaveFormat.AverageBytesPerSecond);
     }
 
     private void PlayMP3E(byte[] mp3eBytes)
@@ -80,6 +82,11 @@ public class M4aTester : MonoBehaviour
                 waveOut.Init(waveBuffer);
                 waveOut.Volume = 0.2f;
                 waveOut.Play();
+
+                UnityMainThreadDispatcher.TryEnqueue(() =>
+                {
+                    slider.maxValue = waveBuffer.file.header.totalSampleCount / (float) waveBuffer.OutputWaveFormat.AverageBytesPerSecond;
+                });
             }
             catch (Exception err)
             {
@@ -111,7 +118,6 @@ public class M4aTester : MonoBehaviour
         stream.Position = 0;
 
 
-        // List<byte> rawmp3 = new(mp3Bytes.Length);
         List<MP3ESegmentScheme> schemes = new();
         List<MP3ESegment> segments = new();
 
@@ -139,7 +145,8 @@ public class M4aTester : MonoBehaviour
             MP3ESegmentScheme scheme = new()
             {
                 sizeInBytes = (ushort)frame.RawData.Length,
-                deltaTimeInMilliseconds = (ushort)(frame.SampleCount * 1000 / (float)(file.header.sampleRate))
+                deltaTimeInMilliseconds = (ushort)(frame.SampleCount * 1000 / (float)(file.header.sampleRate)),
+                pcmSizeInBytes = (ushort)bytesDecompressed,
             };
 
             byte[] mp3FrameBytes = new byte[read];
@@ -173,71 +180,6 @@ public class M4aTester : MonoBehaviour
     }
 }
 
-public class MP3EFileHeader
-{
-    public int sampleRate;
-    public int totalSampleCount;
-    public byte channelMode;
-    public int frameLength;
-    public int bitRate;
-
-    public int segmentCount;
-
-    public byte[] ToBytes()
-    {
-        return BinarySerializer.Serialize(this);
-    }
-
-    public static MP3EFileHeader FromStream(Stream stream)
-    {
-        return BinarySerializer.Deserialize<MP3EFileHeader>(stream);
-    }
-}
-
-public class MP3ESegmentScheme
-{
-    public ushort sizeInBytes;
-    public ushort deltaTimeInMilliseconds;
-}
-public class MP3ESegment
-{
-    public byte[] mp3Frame;
-
-    [NonSerialized]
-    public byte[] pcm;
-
-    public byte[] ToBytes()
-    {
-        return BinarySerializer.Serialize(this);
-    }
-
-    public static MP3ESegment FromStream(Stream stream)
-    {
-        return BinarySerializer.Deserialize<MP3ESegment>(stream);
-    }
-}
-
-public class MP3EFile
-{
-    public MP3EFileHeader header;
-    public MP3ESegmentScheme[] scheme;
-    public MP3ESegment[] segments;
-
-    public static MP3EFile InitFromStream(Stream stream)
-    {
-        // MP3EFile file = new()
-        // {
-        //     header = MP3EFileHeader.FromStream(stream),
-        //     scheme = BinarySerializer.Deserialize<MP3ESegmentScheme[]>(stream),
-        //     segments = BinarySerializer.Deserialize<MP3ESegment[]>(stream),
-        // };
-        // return file;
-
-        return BinarySerializer.Deserialize<MP3EFile>(stream);
-    }
-}
-
-
 public class MP3EWaveProvider : IWaveProvider
 {
     private CircularBuffer circularBuffer;
@@ -248,8 +190,16 @@ public class MP3EWaveProvider : IWaveProvider
     public WaveFormat WaveFormat => OutputWaveFormat;
     public WaveFormat OutputWaveFormat { get; }
 
+    public int Position
+    {
+        get => position;
+        set => SetPosition(value);
+    }
+
     private int position;
-    private MP3EFile file;
+    private int segmentPosition, segmentIndex;
+
+    public MP3EFile file;
 
     private byte[] samplesBuffer = new byte[16384];
 
@@ -262,40 +212,50 @@ public class MP3EWaveProvider : IWaveProvider
 
         OutputWaveFormat = decompressor.OutputFormat;
 
+        int pcmTotalSizeInBytes = file.scheme.Sum(s => s.pcmSizeInBytes);
+        file.pcm = new byte[pcmTotalSizeInBytes];
 
+        int segmentPcmOffset = 0;
         for (int i = 0; i < file.segments.Length; i++)
         {
             MP3ESegment segment = file.segments[i];
+
             Mp3Frame frame = Mp3Frame.LoadFromStream(new MemoryStream(segment.mp3Frame));
             int bytesDecompressed = decompressor.DecompressFrame(frame, samplesBuffer, 0);
 
-            segment.pcm = new byte[bytesDecompressed];
-            Buffer.BlockCopy(samplesBuffer, 0, segment.pcm, 0, bytesDecompressed);
+            Buffer.BlockCopy(samplesBuffer, 0, file.pcm, segmentPcmOffset, bytesDecompressed);
+
+            pcmTotalSizeInBytes += bytesDecompressed;
+            segmentPcmOffset += bytesDecompressed;
         }
-
-
-        circularBuffer = new(OutputWaveFormat.AverageBytesPerSecond * 4 * 60);
-        int bufferedMilliseconds = 0;
-        int toBufferMilliseconds = 4 * 60 * 1000;
-        for (int i = 0; i < file.segments.Length; i++)
-        {
-            MP3ESegmentScheme scheme = file.scheme[i];
-            MP3ESegment segment = file.segments[i];
-
-            if (bufferedMilliseconds + scheme.deltaTimeInMilliseconds > toBufferMilliseconds)
-            {
-                break;
-            }
-
-            bufferedMilliseconds += scheme.deltaTimeInMilliseconds;
-            circularBuffer.Write(segment.pcm, 0, segment.pcm.Length);
-        }
-
-        Debug.Log("Buffered: " + TimeSpan.FromMilliseconds(bufferedMilliseconds) + " ms");
     }
 
     public int Read(byte[] buffer, int offset, int count)
     {
-        return circularBuffer.Read(buffer, offset, count);
+        // int buffered = circularBuffer.Count;
+        // int toRead = count;
+        //
+        // int read = circularBuffer.Read(buffer, offset, count);
+        // position += read;
+        // return read;
+
+        Buffer.BlockCopy(file.pcm, position, buffer, offset, count);
+
+        MP3ESegmentScheme scheme = file.scheme[segmentIndex];
+        if (position + count >= segmentPosition + scheme.pcmSizeInBytes)
+        {
+            segmentIndex++;
+            Debug.Log("segment: " + segmentIndex);
+        }
+
+        position += count;
+
+        return count;
+    }
+
+    public void SetPosition(int position)
+    {
+        int rate = 10;
+        this.position = (int)(position / rate) * rate; // align by magic 10 (if not aligned may create white noise after reposition)
     }
 }

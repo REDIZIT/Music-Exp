@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using UnityEngine;
@@ -8,13 +9,11 @@ using UnityEngine;
 public static class BinarySerializer
 {
     private static Dictionary<Type, int> sizeCache = new();
+    private static Dictionary<Type, FieldInfo[]> fieldsCache = new();
 
-    public static int EstimateObjectSize(Type type)
+    private static int EstimateObjectSize(Type type)
     {
-        if (sizeCache.ContainsKey(type))
-        {
-            return sizeCache[type];
-        }
+        if (sizeCache.ContainsKey(type)) return sizeCache[type];
 
         int size = 0;
         foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
@@ -43,6 +42,19 @@ public static class BinarySerializer
         return size;
     }
 
+    private static FieldInfo[] GetFields(Type type)
+    {
+        if (fieldsCache.ContainsKey(type)) return fieldsCache[type];
+
+        FieldInfo[] fields = type
+            .GetFields(BindingFlags.Public | BindingFlags.Instance)
+            .Where(f => f.GetCustomAttribute<NonSerializedAttribute>() == null)
+            .ToArray();
+
+        fieldsCache.Add(type, fields);
+        return fields;
+    }
+
     public static byte[] Serialize(object obj)
     {
         MemoryStream stream = new();
@@ -56,10 +68,8 @@ public static class BinarySerializer
     {
         Type type = obj.GetType();
 
-        foreach (FieldInfo fieldInfo in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
+        foreach (FieldInfo fieldInfo in GetFields(type))
         {
-            if (fieldInfo.GetCustomAttribute<NonSerializedAttribute>() != null) continue;
-
             Type t = fieldInfo.FieldType;
 
             if (t.IsArray)
@@ -139,10 +149,8 @@ public static class BinarySerializer
         object obj = Activator.CreateInstance(type);
         TypedReference _ref = __makeref(obj);
 
-        foreach (FieldInfo fieldInfo in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
+        foreach (FieldInfo fieldInfo in GetFields(type))
         {
-            if (fieldInfo.GetCustomAttribute<NonSerializedAttribute>() != null) continue;
-
             object value;
             Type t = fieldInfo.FieldType;
 
@@ -151,7 +159,7 @@ public static class BinarySerializer
                 ushort len = reader.ReadUInt16();
                 Type elementType = t.GetElementType();
 
-                Debug.Log("Derialize array of " + elementType.Name);
+                // Debug.Log("Derialize array of " + elementType.Name);
 
                 if (elementType == typeof(byte))
                 {
