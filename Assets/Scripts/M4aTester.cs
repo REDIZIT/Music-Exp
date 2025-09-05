@@ -50,10 +50,13 @@ public class M4aTester : MonoBehaviour
         slider.SetValueWithoutNotify(waveBuffer.Position / (float)waveBuffer.OutputWaveFormat.AverageBytesPerSecond);
         // Debug.Log(slider.value);
 
-        // if (Input.GetKeyDown(KeyCode.K))
-        // {
-        //     waveBuffer.
-        // }
+        if (Input.GetKeyDown(KeyCode.K))
+        {
+            for (int i = 0; i < waveBuffer.file.segments.Length; i++)
+            {
+                waveBuffer.DecompressSegment(i);
+            }
+        }
 
         if (task != null && task.IsCompleted == false && taskStartTime.Elapsed.TotalSeconds > 5)
         {
@@ -197,7 +200,7 @@ public class MP3EWaveProvider : IWaveProvider
     }
 
     private int position;
-    private int segmentIndex;
+    private int currentSegmentIndex;
 
     public MP3EFile file;
 
@@ -221,19 +224,26 @@ public class MP3EWaveProvider : IWaveProvider
         int segmentPcmOffset = 0;
         for (int i = 0; i < file.segments.Length; i++)
         {
-            MP3ESegment segment = file.segments[i];
             MP3ESegmentScheme scheme = file.scheme[i];
-
-            Mp3Frame frame = Mp3Frame.LoadFromStream(new MemoryStream(segment.mp3Frame));
-            int pcmBytesDecompressed = decompressor.DecompressFrame(frame, samplesBuffer, 0);
-
-            Buffer.BlockCopy(samplesBuffer, 0, file.pcm, segmentPcmOffset, pcmBytesDecompressed);
-
-
             scheme.pcmAbsBegin = segmentPcmOffset;
-
-            segmentPcmOffset += pcmBytesDecompressed;
+            segmentPcmOffset += scheme.pcmSizeInBytes;
         }
+
+        // for (int i = 0; i < file.segments.Length; i++)
+        // {
+        //     DecompressSegment(i);
+        // }
+    }
+
+    public void DecompressSegment(int segmentIndex)
+    {
+        MP3ESegment segment = file.segments[segmentIndex];
+        MP3ESegmentScheme scheme = file.scheme[segmentIndex];
+
+        Mp3Frame frame = Mp3Frame.LoadFromStream(new MemoryStream(segment.mp3Frame));
+        int pcmBytesDecompressed = decompressor.DecompressFrame(frame, samplesBuffer, 0);
+
+        Buffer.BlockCopy(samplesBuffer, 0, file.pcm, scheme.pcmAbsBegin, pcmBytesDecompressed);
     }
 
     public int Read(byte[] buffer, int offset, int count)
@@ -252,7 +262,7 @@ public class MP3EWaveProvider : IWaveProvider
         Buffer.BlockCopy(file.pcm, position, buffer, offset, count);
 
         position += count;
-        segmentIndex = lastSegmentIndex;
+        currentSegmentIndex = lastSegmentIndex;
 
         return count;
     }
@@ -265,14 +275,14 @@ public class MP3EWaveProvider : IWaveProvider
         (int firstSegmentIndex, int lastSegmentIndex) = GetRangeOfSegments(this.position, forceFullCheck: true);
         Debug.Log(firstSegmentIndex + " - " + lastSegmentIndex);
 
-        segmentIndex = firstSegmentIndex;
+        currentSegmentIndex = firstSegmentIndex;
     }
 
     private (int firstSegmentIndex, int lastSegmentIndex) GetRangeOfSegments(int absReadEnd, bool forceFullCheck = false)
     {
         int firstSegmentIndex = -1;
         int lastSegmentIndex = -1;
-        int startI = forceFullCheck ? 0 : segmentIndex;
+        int startI = forceFullCheck ? 0 : currentSegmentIndex;
 
         for (int i = startI; i < file.segments.Length; i++)
         {
