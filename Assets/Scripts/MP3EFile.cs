@@ -50,6 +50,12 @@ public class MP3ESegmentScheme
     public ushort sizeInBytes;
     public ushort deltaTimeInMilliseconds;
     public ushort pcmSizeInBytes;
+
+    [NonSerialized]
+    public bool isLoaded;
+
+    [NonSerialized]
+    public int pcmAbsBegin;
 }
 
 public class MP3ESegment
