@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 public static class Extensions
 {
@@ -14,5 +15,11 @@ public static class Extensions
         if (timeleft.TotalSeconds < 0) return "00:00:00";
 
         return timeleft.ToString("hh:mm:ss");
+    }
+
+    public static string ToPrettyTime(this TimeSpan t)
+    {
+        if (t == default || t == TimeSpan.Zero || t.TotalSeconds <= 0) return "0:00";
+        return t.ToString();
     }
 }

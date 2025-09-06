@@ -12,15 +12,15 @@ public class MP3EFile
 
     public static MP3EFile InitFromStream(Stream stream)
     {
-        // MP3EFile file = new()
-        // {
-        //     header = MP3EFileHeader.FromStream(stream),
-        //     scheme = BinarySerializer.Deserialize<MP3ESegmentScheme[]>(stream),
-        //     segments = BinarySerializer.Deserialize<MP3ESegment[]>(stream),
-        // };
-        // return file;
+        MP3EFile file = new()
+        {
+            header = MP3EFileHeader.FromStream(stream),
+            scheme = BinarySerializer.Deserialize<MP3ESegmentScheme[]>(stream),
+        };
 
-        return BinarySerializer.Deserialize<MP3EFile>(stream);
+        file.segments = new MP3ESegment[file.scheme.Length];
+
+        return file;
     }
 }
 
@@ -31,8 +31,10 @@ public class MP3EFileHeader
     public byte channelMode;
     public int frameLength;
     public int bitRate;
-
     public int segmentCount;
+
+    public float TotalSeconds => totalSampleCount / (float)sampleRate;
+    public TimeSpan Duration => TimeSpan.FromSeconds(TotalSeconds);
 
     public byte[] ToBytes()
     {

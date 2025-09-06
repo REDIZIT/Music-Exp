@@ -146,6 +146,31 @@ public static class BinarySerializer
     }
     public static object Deserialize(BinaryReader reader, Type type)
     {
+        if (type.IsArray)
+        {
+            ushort len = reader.ReadUInt16();
+            Type elementType = type.GetElementType();
+
+            // Debug.Log("Derialize array of " + elementType.Name);
+
+            if (elementType == typeof(byte))
+            {
+                return reader.ReadBytes(len);
+            }
+            else
+            {
+                Array arrayObj = Array.CreateInstance(elementType, len);
+
+                for (int i = 0; i < len; i++)
+                {
+                    object elementObj = Read(reader, elementType);
+                    arrayObj.SetValue(elementObj, i);
+                }
+
+                return arrayObj;
+            }
+        }
+
         object obj = Activator.CreateInstance(type);
         TypedReference _ref = __makeref(obj);
 
@@ -156,27 +181,7 @@ public static class BinarySerializer
 
             if (t.IsArray)
             {
-                ushort len = reader.ReadUInt16();
-                Type elementType = t.GetElementType();
-
-                // Debug.Log("Derialize array of " + elementType.Name);
-
-                if (elementType == typeof(byte))
-                {
-                    value = reader.ReadBytes(len);
-                }
-                else
-                {
-                    Array arrayObj = Array.CreateInstance(elementType, len);
-
-                    for (int i = 0; i < len; i++)
-                    {
-                        object elementObj = Read(reader, elementType);
-                        arrayObj.SetValue(elementObj, i);
-                    }
-
-                    value = arrayObj;
-                }
+                value = Deserialize(reader, t);
             }
             else
             {
