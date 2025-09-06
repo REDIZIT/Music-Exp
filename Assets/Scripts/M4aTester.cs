@@ -14,6 +14,7 @@ using Debug = UnityEngine.Debug;
 public class M4aTester : MonoBehaviour
 {
     [SerializeField] private Slider slider;
+    [SerializeField] private BufferShaderController bufferShaderController;
 
     private WaveOut waveOut;
     private MP3EWaveProvider waveBuffer;
@@ -21,6 +22,8 @@ public class M4aTester : MonoBehaviour
 
     private Task task;
     private Stopwatch taskStartTime;
+
+    private int aboba;
 
     private async void Start()
     {
@@ -46,16 +49,32 @@ public class M4aTester : MonoBehaviour
     {
         if (waveBuffer == null) return;
 
-        // Debug.Log(waveBuffer.Position + ", " + TimeSpan.FromSeconds(waveBuffer.Position / (float)waveBuffer.OutputWaveFormat.AverageBytesPerSecond));
         slider.SetValueWithoutNotify(waveBuffer.Position / (float)waveBuffer.OutputWaveFormat.AverageBytesPerSecond);
-        // Debug.Log(slider.value);
 
         if (Input.GetKeyDown(KeyCode.K))
         {
-            for (int i = 0; i < waveBuffer.file.segments.Length; i++)
+            for (int i = 0; i < 100; i++)
             {
-                waveBuffer.DecompressSegment(i);
+                int j = aboba + i;
+                if (j >= waveBuffer.file.segments.Length) break;
+                waveBuffer.DecompressSegment(j);
             }
+            aboba += 100;
+
+            bufferShaderController.Refresh(waveBuffer.file);
+        }
+
+        if (Input.GetKeyDown(KeyCode.J))
+        {
+            for (int i = 0; i < 100; i++)
+            {
+                int j = aboba + i + 4000;
+                if (j >= waveBuffer.file.segments.Length) break;
+                waveBuffer.DecompressSegment(j);
+            }
+            aboba += 100;
+
+            bufferShaderController.Refresh(waveBuffer.file);
         }
 
         if (task != null && task.IsCompleted == false && taskStartTime.Elapsed.TotalSeconds > 5)
@@ -69,6 +88,18 @@ public class M4aTester : MonoBehaviour
     public void OnSliderChange(float value)
     {
         waveBuffer.Position = (int) (value * waveBuffer.OutputWaveFormat.AverageBytesPerSecond);
+    }
+
+    public void OnPlayClick()
+    {
+        if (waveOut.PlaybackState == PlaybackState.Playing)
+        {
+            waveOut.Pause();
+        }
+        else
+        {
+            waveOut.Play();
+        }
     }
 
     private void PlayMP3E(byte[] mp3eBytes)
@@ -88,7 +119,8 @@ public class M4aTester : MonoBehaviour
 
                 UnityMainThreadDispatcher.TryEnqueue(() =>
                 {
-                    slider.maxValue = waveBuffer.file.header.totalSampleCount / (float) waveBuffer.OutputWaveFormat.AverageBytesPerSecond;
+                    slider.maxValue = waveBuffer.file.header.totalSampleCount / (float)waveBuffer.file.header.sampleRate;
+                    Debug.Log(slider.maxValue);
                 });
             }
             catch (Exception err)
@@ -244,6 +276,8 @@ public class MP3EWaveProvider : IWaveProvider
         int pcmBytesDecompressed = decompressor.DecompressFrame(frame, samplesBuffer, 0);
 
         Buffer.BlockCopy(samplesBuffer, 0, file.pcm, scheme.pcmAbsBegin, pcmBytesDecompressed);
+
+        scheme.isLoaded = true;
     }
 
     public int Read(byte[] buffer, int offset, int count)
