@@ -18,17 +18,14 @@ public class M4aTester : MonoBehaviour
     private Player player;
     private bool isBufferChangeGot;
 
-    private Task task;
-    private Stopwatch taskStartTime;
-
-    private int aboba;
-
     private async void Start()
     {
         player = new();
         player.onBufferChange += () =>
         {
             if (isBufferChangeGot) return;
+            isBufferChangeGot = true;
+
             UnityMainThreadDispatcher.TryEnqueue(() =>
             {
                 if (player.Source is LocalMusicSource local)
@@ -40,8 +37,7 @@ public class M4aTester : MonoBehaviour
             });
         };
 
-        taskStartTime = Stopwatch.StartNew();
-        task = Task.Run(() =>
+        await Task.Run(() =>
         {
             // MP3EFormatter.MP3_to_MP3E("C:/Hated Love Dance.mp3", "C:/Hated Love Dance.mp3e");
 
@@ -73,11 +69,20 @@ public class M4aTester : MonoBehaviour
         slider.SetValueWithoutNotify(currentTime);
         currentTimeText.text = TimeSpan.FromSeconds(currentTime).ToPrettyTime();
 
-        if (task != null && task.IsCompleted == false && taskStartTime.Elapsed.TotalSeconds > 5)
+        if (Input.GetKeyDown(KeyCode.K))
         {
-            task.Dispose();
-            Debug.LogError("Task timeout");
-            task = null;
+            Task.Run(() =>
+            {
+                LocalMusicSource localSource = new("C:/Hated Love Dance.mp3e");
+                player.ChangeSource(localSource);
+
+                UnityMainThreadDispatcher.TryEnqueue(() =>
+                {
+                    slider.maxValue = player.TotalTime;
+                    totalTimeText.text = TimeSpan.FromSeconds(player.TotalTime).ToPrettyTime();
+                    currentTimeText.text = TimeSpan.Zero.ToPrettyTime();
+                });
+            });
         }
     }
 

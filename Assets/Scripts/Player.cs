@@ -23,8 +23,7 @@ public class Player : IDisposable
 
     public Player()
     {
-        waveOut = new();
-        waveOut.Volume = 0.2f;
+
     }
 
     public void Pause()
@@ -46,16 +45,25 @@ public class Player : IDisposable
             this.source = null;
         }
 
+        if (waveOut != null)
+        {
+            waveOut?.Dispose();
+        }
+
         this.source = source;
 
         IWaveProvider provider = source.Init();
         Stopwatch w = Stopwatch.StartNew();
+        waveOut = new();
+        waveOut.Volume = 0.2f;
         waveOut.Init(provider);
         Debug.Log($"Wave init in {w.ElapsedMilliseconds}ms");
 
         source.onBufferChange += this.onBufferChange;
 
         waveOut.Play();
+
+        GC.Collect();
     }
 
     public void Dispose()

@@ -1,7 +1,6 @@
 ﻿using System.Diagnostics;
 using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
 using NAudio.Wave;
 using Debug = UnityEngine.Debug;
 
@@ -12,7 +11,6 @@ public class LocalMusicSource : MusicSource
 
     public MP3EWaveProvider waveBuffer;
 
-    private Task task;
     private Thread thread;
 
     public override float CurrentTime
@@ -47,7 +45,6 @@ public class LocalMusicSource : MusicSource
 
         waveBuffer = new(file);
 
-        // task = Task.Run(FeedBuffer);
         thread = new(FeedBuffer);
         thread.Start();
 
@@ -56,7 +53,6 @@ public class LocalMusicSource : MusicSource
 
     public override void Dispose()
     {
-        task?.Dispose();
         thread?.Abort();
     }
 
