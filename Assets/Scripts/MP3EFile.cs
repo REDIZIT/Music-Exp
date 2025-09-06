@@ -12,15 +12,16 @@ public class MP3EFile
 
     public static MP3EFile InitFromStream(Stream stream)
     {
-        MP3EFile file = new()
-        {
-            header = MP3EFileHeader.FromStream(stream),
-            scheme = BinarySerializer.Deserialize<MP3ESegmentScheme[]>(stream),
-        };
+        // MP3EFile file = new()
+        // {
+        //     header = MP3EFileHeader.FromStream(stream),
+        //     scheme = BinarySerializer.Deserialize<MP3ESegmentScheme[]>(stream),
+        // };
 
-        file.segments = new MP3ESegment[file.scheme.Length];
+        // file.segments = new MP3ESegment[file.scheme.Length];
 
-        return file;
+        // return file;
+        return BinarySerializer.Deserialize<MP3EFile>(stream);
     }
 }
 

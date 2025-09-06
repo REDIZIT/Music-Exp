@@ -22,7 +22,7 @@ public class MP3EWaveProvider : IWaveProvider
     }
 
     private int position;
-    private int currentSegmentIndex;
+    public int currentSegmentIndex;
 
     public MP3EFile file;
 
@@ -36,6 +36,7 @@ public class MP3EWaveProvider : IWaveProvider
         decompressor = new AcmMp3FrameDecompressor(waveFormat);
 
         OutputWaveFormat = decompressor.OutputFormat;
+        Debug.Log(OutputWaveFormat + ": samplerate = " + OutputWaveFormat.SampleRate);
 
         int pcmTotalSizeInBytes = file.scheme.Sum(s => s.pcmSizeInBytes);
         file.pcm = new byte[pcmTotalSizeInBytes];

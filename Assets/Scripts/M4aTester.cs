@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.IO;
 using System.Threading.Tasks;
 using NAudio.Wave;
 using PimDeWitte.UnityMainThreadDispatcher;
@@ -16,9 +15,8 @@ public class M4aTester : MonoBehaviour
     [SerializeField] private Image playIcon, pauseIcon;
     [SerializeField] private TextMeshProUGUI currentTimeText, totalTimeText;
 
-    private WaveOut waveOut;
-    private MP3EWaveProvider waveBuffer;
-    private AcmMp3FrameDecompressor decompressor;
+    private Player player;
+    private bool isBufferChangeGot;
 
     private Task task;
     private Stopwatch taskStartTime;
@@ -27,13 +25,38 @@ public class M4aTester : MonoBehaviour
 
     private async void Start()
     {
-        waveOut = new();
+        player = new();
+        player.onBufferChange += () =>
+        {
+            if (isBufferChangeGot) return;
+            UnityMainThreadDispatcher.TryEnqueue(() =>
+            {
+                if (player.Source is LocalMusicSource local)
+                {
+                    bufferShaderController.Refresh(local.waveBuffer.file);
+                }
+
+                isBufferChangeGot = false;
+            });
+        };
 
         taskStartTime = Stopwatch.StartNew();
         task = Task.Run(() =>
         {
-            byte[] mp3eBytes = File.ReadAllBytes("C:/Melody Chase.mp3e");
-            PlayMP3E(mp3eBytes);
+            // MP3EFormatter.MP3_to_MP3E("C:/Hated Love Dance.mp3", "C:/Hated Love Dance.mp3e");
+
+            // byte[] mp3eBytes = File.ReadAllBytes("C:/Melody Chase.mp3e");
+            // byte[] mp3eBytes = File.ReadAllBytes("C:/Hated Love Dance.mp3e");
+
+            LocalMusicSource localSource = new("C:/Melody Chase.mp3e");
+            player.ChangeSource(localSource);
+
+            UnityMainThreadDispatcher.TryEnqueue(() =>
+            {
+                slider.maxValue = player.TotalTime;
+                totalTimeText.text = TimeSpan.FromSeconds(player.TotalTime).ToPrettyTime();
+                currentTimeText.text = TimeSpan.Zero.ToPrettyTime();
+            });
         });
 
         slider.onValueChanged.AddListener(OnSliderChange);
@@ -41,40 +64,14 @@ public class M4aTester : MonoBehaviour
 
     private void Update()
     {
-        if (waveBuffer == null) return;
+        if (player == null) return;
 
-        playIcon.gameObject.SetActive(waveOut.PlaybackState != PlaybackState.Playing);
-        pauseIcon.gameObject.SetActive(waveOut.PlaybackState == PlaybackState.Playing);
+        playIcon.gameObject.SetActive(player.PlaybackState != PlaybackState.Playing);
+        pauseIcon.gameObject.SetActive(player.PlaybackState == PlaybackState.Playing);
 
-        float currentTime = waveBuffer.Position / (float) waveBuffer.OutputWaveFormat.AverageBytesPerSecond;
+        float currentTime = player.CurrentTime;
         slider.SetValueWithoutNotify(currentTime);
         currentTimeText.text = TimeSpan.FromSeconds(currentTime).ToPrettyTime();
-
-        if (Input.GetKeyDown(KeyCode.K))
-        {
-            for (int i = 0; i < 100; i++)
-            {
-                int j = aboba + i;
-                if (j >= waveBuffer.file.segments.Length) break;
-                waveBuffer.DecompressSegment(j);
-            }
-            aboba += 100;
-
-            bufferShaderController.Refresh(waveBuffer.file);
-        }
-
-        if (Input.GetKeyDown(KeyCode.J))
-        {
-            for (int i = 0; i < 100; i++)
-            {
-                int j = aboba + i + 4000;
-                if (j >= waveBuffer.file.segments.Length) break;
-                waveBuffer.DecompressSegment(j);
-            }
-            aboba += 100;
-
-            bufferShaderController.Refresh(waveBuffer.file);
-        }
 
         if (task != null && task.IsCompleted == false && taskStartTime.Elapsed.TotalSeconds > 5)
         {
@@ -86,55 +83,23 @@ public class M4aTester : MonoBehaviour
 
     public void OnSliderChange(float value)
     {
-        waveBuffer.Position = (int) (value * waveBuffer.OutputWaveFormat.AverageBytesPerSecond);
+        player.CurrentTime = value;
     }
 
     public void OnPlayClick()
     {
-        if (waveOut.PlaybackState == PlaybackState.Playing)
+        if (player.PlaybackState == PlaybackState.Playing)
         {
-            waveOut.Pause();
+            player.Pause();
         }
         else
         {
-            waveOut.Play();
+            player.Play();
         }
-    }
-
-    private void PlayMP3E(byte[] mp3eBytes)
-    {
-        Task.Run(() =>
-        {
-            try
-            {
-                using MemoryStream stream = new(mp3eBytes);
-
-                Stopwatch w = Stopwatch.StartNew();
-                MP3EFile file = MP3EFile.InitFromStream(stream);
-                Debug.Log($"File inited in {w.ElapsedMilliseconds}ms");
-                waveBuffer = new(file);
-
-                waveOut.Init(waveBuffer);
-                waveOut.Volume = 0.2f;
-                waveOut.Play();
-
-                UnityMainThreadDispatcher.TryEnqueue(() =>
-                {
-                    slider.maxValue = waveBuffer.file.header.TotalSeconds;
-                    totalTimeText.text = file.header.Duration.ToPrettyTime();
-                    currentTimeText.text = TimeSpan.Zero.ToPrettyTime();
-                });
-            }
-            catch (Exception err)
-            {
-                Debug.LogException(err);
-            }
-        });
     }
 
     private void OnDestroy()
     {
-        waveOut?.Dispose();
-        decompressor?.Dispose();
+        player?.Dispose();
     }
 }
